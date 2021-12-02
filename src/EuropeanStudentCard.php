@@ -39,7 +39,7 @@ class EuropeanStudentCard
                         ++self::$time;
                 else  
                 {
-                        $sysTime = round(microtime(true) * 1000);
+                        $sysTime = microtime(true) * 1000;
                         
                         self::$hits = 10000;
                         
@@ -52,7 +52,7 @@ class EuropeanStudentCard
                                 else // REQUESTING UUIDs TOO FAST FOR SYSTEM CLOCK
                                 {
                                         usleep(1000);
-                                        $sysTime = round(microtime(true) * 1000);
+                                        $sysTime = intval(microtime(true) * 1000);
                                 }
                         }
                         
@@ -60,15 +60,27 @@ class EuropeanStudentCard
                         self::$oldSysTime = $sysTime;
                 }
                 
-                $low = intval(self::$time);
-                $mid = intval(self::$time >> 32) & 0xffff;
+                $low = self::get32BitsInteger(self::$time);
+                $mid = self::get32BitsInteger(self::$time >> 32) & 0xffff;
                 
                 // 12 bit hi, set high 4 bits to '0001' for RFC 4122 version 1
-                $hi = (intval(self::$time >> 48) & 0x0fff) | 0x1000;
+                $hi = (self::get32BitsInteger(self::$time >> 48) & 0x0fff) | 0x1000;
                 
                 return strtolower(sprintf("%08X-%04X-%04X-%04X-%s",
                         $low, $mid, $hi, self::$clock, $node
                 ));
+        }
+        
+        /**
+         * Cast number to 32 bits integer (useful if system is 64bits)
+         * 
+         * @param num Number to cast
+         */
+        private static function get32BitsInteger($num) 
+        {
+                return PHP_INT_SIZE == 4 
+                        ? $num 
+                        : $num & 0xFFFFFFFF;
         }
         
         /**
@@ -85,10 +97,10 @@ class EuropeanStudentCard
         {
                 $prefix = str_pad($prefix, 3, '0', STR_PAD_LEFT);
                 
-                if (!preg_match("[0-9]{3}", $prefix))
+                if (!preg_match("/[0-9]{3}/", $prefix))
                         throw new Exception('Invalid Prefix format!');
                 
-                if (!preg_match("[0-9]{9}", $pic))
+                if (!preg_match("/[0-9]{9}/", $pic))
                         throw new Exception('Invalid PIC format!');
                 
                 $concatId = $prefix . $pic;
@@ -98,4 +110,97 @@ class EuropeanStudentCard
                 
                 return $concatId;
         }
+        
+        const API_URL = 'https://api.europeanstudentcard.eu/v1/';
+        
+        public static function studentExists($identifier) 
+        {
+                $ch = curl_init(self::API_URL . 'students/' . $identifier);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, self::getApiHeaders());
+                
+                curl_setopt($ch, CURLOPT_HTTPGET, true);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
+                curl_setopt($ch, CURLOPT_MAXREDIRS, 0);
+                
+                $result = json_decode(curl_exec($ch));
+                
+                curl_close($ch);
+                
+                return empty($result->error);
+        }
+        
+        public static function studentCardExists($identifier) 
+        {
+                $ch = curl_init(self::API_URL . 'cards');
+                curl_setopt($ch, CURLOPT_HTTPHEADER, self::getApiHeaders());
+                
+                curl_setopt($ch, CURLOPT_HTTPGET, true);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
+                curl_setopt($ch, CURLOPT_MAXREDIRS, 0);
+                
+                $result = json_decode(curl_exec($ch));
+                
+                curl_close($ch);
+                pr($result);
+                pr($identifier);
+                foreach ($result as $res)
+                        if ($res->student->europeanStudentIdentifier == $identifier) 
+                                return $res->europeanStudentCardNumber;
+                
+                return false;
+        }
+        
+        public static function createStudent($identifier, $mail, $name = '') 
+        {
+                $ch = curl_init(self::API_URL . 'students/');
+                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+                        'picInstitutionCode' => Configure::read('ESC.pic'),
+                        'europeanStudentIdentifier' => $identifier,
+                        'emailAddress' => $mail,
+                        'expiryDate' => '2050-01-01T00:00:00.000Z',
+                        'name' => $name
+                ]));
+                curl_setopt($ch, CURLOPT_HTTPHEADER, self::getApiHeaders());
+                
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                
+                $result = curl_exec($ch);
+                
+                curl_close($ch);
+                
+                pr($result);
+        }
+        
+        public static function createStudentCard($identifier) 
+        {
+                $escn = self::getEscn(1, Configure::read('ESC.pic'));
+                
+                $ch = curl_init(self::API_URL . 'students/' . $identifier . '/cards');
+                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+                        'europeanStudentCardNumber' => $escn,
+                        'cardType' => Configure::read('ESC.card_type')
+                ]));
+                curl_setopt($ch, CURLOPT_HTTPHEADER, self::getApiHeaders());
+                
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                
+                $result = curl_exec($ch);
+                
+                curl_close($ch);
+                
+                pr($result);
+        }
+        
+        private static function getApiHeaders() 
+        {
+                return [
+                        'Content-Type: application/json',
+                        'Key: ' . Configure::read('ESC.api_key')
+                ];
+        }
+        
 }
