@@ -85,10 +85,10 @@ class EuropeanStudentCard
         {
                 $prefix = str_pad($prefix, 3, '0', STR_PAD_LEFT);
                 
-                if (!preg_match("[0-9]{3}", $prefix))
+                if (!preg_match("/[0-9]{3}/", $prefix))
                         throw new Exception('Invalid Prefix format!');
                 
-                if (!preg_match("[0-9]{9}", $pic))
+                if (!preg_match("/[0-9]{9}/", $pic))
                         throw new Exception('Invalid PIC format!');
                 
                 $concatId = $prefix . $pic;
