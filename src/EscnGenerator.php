@@ -17,7 +17,7 @@
  * Octet 10-15: node The spatially unique node identifier
  *
  */
-class EuropeanStudentCard
+class EscnGenerator
 {
         // Offset from 15 Oct 1582 to 1 Jan 1970
         const OFFSET_MILLIS = 12219292800000;
